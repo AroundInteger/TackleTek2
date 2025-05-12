@@ -35,10 +35,29 @@ ENV/
 *.avi
 *.mov
 !R1_1.mp4
-calibration_visualization.jpg
+*.mp4
+!R1_1.mp4
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.csv
+*.json
 *.pt
 *.pth
 *.onnx
+*.m
+*.asv
+*.pages
+*.docx
+*.pdf
+*.jpeg
+*.DS_Store
 
 # Logs
-*.log 
+*.log
+
+# Output directories
+output_frames*/
+R1_*_frames/
+R1_frames/ 
