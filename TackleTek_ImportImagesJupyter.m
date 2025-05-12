@@ -1,0 +1,71 @@
+clear
+%%
+
+fldr = "/Users/iMacPro/Library/CloudStorage/OneDrive-SwanseaUniversity/Research/TackleTek//output_frames R1_4/";
+fileList = dir(fullfile(fldr, '*.png'));
+N_files = length(fileList);
+%% Open VideoViewer
+
+
+%vR = VideoReader(fn);
+vW = VideoWriter("R1_4_pose.mp4","MPEG-4");open(vW)
+% 
+
+%%
+
+%frames = cell(numFrames, 1);
+%RECT = [100,1150,3500,480];
+for kk = 1:1:N_files
+
+    %jj = kk + 209;
+    I = imread(strcat(fldr,fileList(kk).name));
+    %figure(1);imshow(I)
+    writeVideo(vW,I)
+
+    %frames{kk} = frame;
+end
+
+close(vW)
+%figure(1);imshow(J)
+
+% %%
+% detector = yolov2ObjectDetector('tiny-yolov2-coco');
+% 
+% for kk = 1%:numFrames
+% 
+%     I = rgb2gray(frames{kk});
+% 
+%     figure(1);imshow(I)
+% 
+%     detections = detect(detector, I);
+% 
+%     J = insertObjectAnnotation(I,'rectangle',bboxes,scores);
+% 
+% end
+% 
+
+
+
+
+
+
+
+
+%%
+
+% for ii = 60*3.5:60*6
+% % I0 = read(v,round(60*4));
+% I = read(vR,ii);
+% % figure(1);subplot(1,2,1)
+% % imshow(I)
+% 
+% % [bboxes,scores] = detect(detector,I);
+% % %[bboxes,scores] = peopleDetector(I);
+% % 
+% % J = insertObjectAnnotation(I,'rectangle',bboxes,scores);
+% figure(1);%subplot(1,2,2)
+% imshow(I)
+% %title('Detected People and Detection Scores')
+% drawnow
+% 
+% end
