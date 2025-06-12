@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtGui import QMovie, QIcon, QPixmap
 
 # Import your processing functions
 from detect_mkrs_bkg_grid_blobs_2 import calibrate_markers, process_video
@@ -40,9 +41,6 @@ class VideoApp(QWidget):
 
         layout = QVBoxLayout()
 
-        self.label = QLabel("No video selected.")
-        layout.addWidget(self.label)
-
         button_layout = QHBoxLayout()
         self.select_button = QPushButton("Select Video")
         self.select_button.clicked.connect(self.select_video)
@@ -59,10 +57,6 @@ class VideoApp(QWidget):
         button_layout.addWidget(self.view_button)
 
         layout.addLayout(button_layout)
-
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        layout.addWidget(self.log_text)
 
         # Video player widgets
         self.video_widget = QVideoWidget()
@@ -81,41 +75,42 @@ class VideoApp(QWidget):
         file_path, _ = file_dialog.getOpenFileName(self, "Select Video File", "", "Video Files (*.mp4 *.avi *.mov)")
         if file_path:
             self.video_path = file_path
-            self.label.setText(f"Selected: {file_path}")
+            self.process_button.setText("Process Video")  # Reset text
             self.process_button.setEnabled(True)
             self.view_button.setEnabled(False)
         else:
-            self.label.setText("No video selected.")
+            self.process_button.setText("Process Video")  # Reset text
             self.process_button.setEnabled(False)
             self.view_button.setEnabled(False)
 
     def process_video(self):
         if not self.video_path:
             return
-        self.log_text.append("Starting processing...")
+        self.process_button.setText("Processing Video...")
         self.process_button.setEnabled(False)
         self.view_button.setEnabled(False)
         self.thread = VideoProcessorThread(self.video_path)
-        self.thread.log_signal.connect(self.log_text.append)
+        self.thread.log_signal.connect(self.handle_log)
         self.thread.finished_signal.connect(self.on_processing_finished)
         self.thread.start()
 
+    def handle_log(self, message):
+        print(message)
+
     def on_processing_finished(self):
-        self.log_text.append("Done.")
+        self.process_button.setText("Done")
         self.process_button.setEnabled(True)
-        # Enable view button only if output video exists
         if os.path.exists(OUTPUT_VIDEO):
             self.view_button.setEnabled(True)
         else:
-            self.log_text.append("Output video not found.")
+            print("Output video not found.")
 
     def view_output_video(self):
         if os.path.exists(OUTPUT_VIDEO):
             self.media_player.setSource(QUrl.fromLocalFile(os.path.abspath(OUTPUT_VIDEO)))
             self.media_player.play()
-            self.log_text.append("Playing output video...")
         else:
-            self.log_text.append("Output video not found.")
+            print("Output video not found.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
