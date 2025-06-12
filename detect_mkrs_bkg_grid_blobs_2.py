@@ -22,6 +22,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 model = YOLO('yolov8x-pose.pt')  # Using the most accurate model
 
 class PlayerTracker:
+    """
+    Tracks and smooths the position of a player using a Kalman filter and temporal averaging.
+
+    Attributes
+    ----------
+    max_history : int
+        Maximum number of positions to keep in history for smoothing.
+    position_history : deque
+        History of player positions.
+    y_smooth_history : deque
+        History of Y-coordinates for additional smoothing.
+    kalman : cv2.KalmanFilter
+        Kalman filter instance for position prediction and correction.
+
+    Methods
+    -------
+    update(position)
+        Updates the tracker with a new position and returns the smoothed position.
+    """
     def __init__(self, max_history=30):
         self.max_history = max_history
         self.position_history = deque(maxlen=max_history)
@@ -77,18 +96,33 @@ class PlayerTracker:
         return filtered_pos
 
 def create_euclidean_grid_overlay(frame, ball_carrier_pos, tackler_pos, 
-                                ball_carrier_history, tackler_history,
-                                grid_size=0.25, overlay_size=600):
+                                  ball_carrier_history, tackler_history,
+                                  grid_size=0.25, overlay_size=600):
     """
-    Create a Euclidean grid overlay in the top-right corner.
-    Args:
-        frame: Input frame
-        ball_carrier_pos: Current position of ball carrier in real-world coordinates
-        tackler_pos: Current position of tackler in real-world coordinates
-        ball_carrier_history: List of previous ball carrier positions
-        tackler_history: List of previous tackler positions
-        grid_size: Size of grid cells in meters (0.25m for fine grid)
-        overlay_size: Size of the overlay in pixels (600x600)
+    Draws a fixed-size (5x5m) Euclidean grid overlay in the top-right corner of the frame,
+    showing the real-world positions and distance of the two tracked players.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        The video frame to annotate.
+    ball_carrier_pos : array-like or None
+        Real-world (x, y) position of the ball carrier.
+    tackler_pos : array-like or None
+        Real-world (x, y) position of the tackler.
+    ball_carrier_history : deque
+        History of ball carrier positions.
+    tackler_history : deque
+        History of tackler positions.
+    grid_size : float, optional
+        Size of each grid cell in meters (default is 0.25).
+    overlay_size : int, optional
+        Size of the overlay in pixels (default is 600).
+
+    Returns
+    -------
+    frame : np.ndarray
+        The frame with the Euclidean grid overlay.
     """
     # Create overlay image
     overlay = np.zeros((overlay_size, overlay_size, 3), dtype=np.uint8)
@@ -188,6 +222,30 @@ def create_euclidean_grid_overlay(frame, ball_carrier_pos, tackler_pos,
     return frame
 
 def draw_annotations(frame, ball_carrier, tackler, ball_carrier_history, tackler_history, calibration_data):
+    """
+    Draws pose skeletons, real-world coordinates, and distance annotations for the two players.
+    Also overlays the Euclidean grid.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        The video frame to annotate.
+    ball_carrier : np.ndarray
+        Keypoints for the ball carrier.
+    tackler : np.ndarray
+        Keypoints for the tackler.
+    ball_carrier_history : deque
+        History of ball carrier positions.
+    tackler_history : deque
+        History of tackler positions.
+    calibration_data : dict
+        Calibration data including perspective transform and grid info.
+
+    Returns
+    -------
+    ball_carrier_points, tackler_points, current_distance, ball_carrier_pos, tackler_pos
+        Various annotation and measurement results for further processing.
+    """
     colors = {
         'ball_carrier': (0, 255, 0),    # Green
         'tackler': (0, 0, 255),         # Red
@@ -402,7 +460,21 @@ def draw_annotations(frame, ball_carrier, tackler, ball_carrier_history, tackler
     return ball_carrier_points, tackler_points, current_distance, ball_carrier_pos, tackler_pos
 
 def process_video(video_path, calibration_data):
-    """Process the video with the calibrated parameters."""
+    """
+    Processes the input video, performing pose detection, player tracking, grid overlay,
+    and distance measurement for each frame. Saves annotated video and distance data.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    calibration_data : dict
+        Calibration data including grid points and perspective transform.
+
+    Returns
+    -------
+    None
+    """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("Could not open video file")
@@ -504,7 +576,22 @@ def process_video(video_path, calibration_data):
     logging.info("Analysis video saved successfully to %s", output_path)
 
 def calibrate_markers(video_path, num_frames=50):
-    """Calibrate markers using the first few frames of the video."""
+    """
+    Calibrates the field by detecting orange markers in the first few frames of the video.
+    Computes the perspective transform and grid layout.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    num_frames : int, optional
+        Number of frames to use for calibration (default is 50).
+
+    Returns
+    -------
+    calibration_data : dict
+        Dictionary containing calibration results, grid points, and transform matrices.
+    """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("Could not open video file")
@@ -626,8 +713,17 @@ def calibrate_markers(video_path, num_frames=50):
 
 def detect_orange_markers(frame):
     """
-    Detect orange markers with multiple HSV ranges to handle lighting variations.
-    Returns markers in order: [0,0], [5,0], [5,5], [0,5] in real-world coordinates.
+    Detects four orange field markers in the frame using multiple HSV color ranges and contour analysis.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        The video frame to process.
+
+    Returns
+    -------
+    marker_centers : np.ndarray or None
+        Array of four marker centers in image coordinates, or None if not found.
     """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     
@@ -701,9 +797,19 @@ def detect_orange_markers(frame):
 
 def calculate_perspective_transform(corners):
     """
-    Calculate the perspective transform matrix from pixel coordinates to real-world coordinates.
-    corners should be in order: [0,0], [5,0], [5,5], [0,5] in real-world coordinates.
-    Returns the transform matrix and its inverse.
+    Calculates the perspective transform matrix from image to real-world coordinates.
+
+    Parameters
+    ----------
+    corners : np.ndarray
+        Array of four corner points in image coordinates.
+
+    Returns
+    -------
+    transform_matrix : np.ndarray
+        Matrix for mapping image to real-world coordinates.
+    inverse_matrix : np.ndarray
+        Matrix for mapping real-world to image coordinates.
     """
     # Ensure corners are in the correct format (4x2 float32 array)
     corners = np.float32(corners).reshape(-1, 2)
@@ -724,8 +830,19 @@ def calculate_perspective_transform(corners):
 
 def create_grid_points(corners, grid_size=0.5):
     """
-    Create grid points and lines for a 5x5m grid with camera positioned midway.
-    corners should be in order: [0,0], [5,0], [5,5], [0,5] in real-world coordinates.
+    Generates grid points and lines for overlaying a perspective-correct field grid.
+
+    Parameters
+    ----------
+    corners : np.ndarray
+        Array of four field corner points in image coordinates.
+    grid_size : float, optional
+        Grid cell size in meters (default is 0.5).
+
+    Returns
+    -------
+    grid_points, h_lines_coarse, v_lines_coarse, h_lines_fine, v_lines_fine, transform_matrix, inverse_matrix
+        Various grid and transform data for overlay and measurement.
     """
     # Calculate perspective transform matrices
     transform_matrix, inverse_matrix = calculate_perspective_transform(corners)
@@ -923,7 +1040,24 @@ def draw_masked_grid(frame, grid_points, h_lines_coarse, v_lines_coarse,
     return output
 
 def identify_players(keypoints, prev_ball_carrier, prev_tackler):
-    """Identify which detected pose corresponds to the ball carrier and tackler."""
+    """
+    Identifies which detected poses correspond to the ball carrier and tackler,
+    using previous positions and left/right heuristics.
+
+    Parameters
+    ----------
+    keypoints : np.ndarray
+        Array of detected pose keypoints.
+    prev_ball_carrier : np.ndarray or None
+        Previous ball carrier keypoints.
+    prev_tackler : np.ndarray or None
+        Previous tackler keypoints.
+
+    Returns
+    -------
+    ball_carrier, tackler : np.ndarray or None
+        Keypoints for the ball carrier and tackler.
+    """
     if keypoints is None or len(keypoints) == 0:
         return prev_ball_carrier, prev_tackler
         
