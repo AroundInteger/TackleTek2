@@ -70,6 +70,32 @@ class VideoApp(QWidget):
 
         self.setLayout(layout)
 
+        # Set blue/light blue theme
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #e3f0fc; /* light blue */
+            }
+            QPushButton {
+                background-color: #1976d2; /* blue */
+                color: white;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 15px;
+            }
+            QPushButton:disabled {
+                background-color: #90caf9; /* lighter blue for disabled */
+                color: #e3f0fc;
+            }
+            QPushButton:hover {
+                background-color: #1565c0; /* darker blue on hover */
+            }
+            QVideoWidget {
+                border: 2px solid #1976d2;
+                border-radius: 8px;
+                background-color: #bbdefb; /* very light blue */
+            }
+        """)
+
     def select_video(self):
         file_dialog = QFileDialog()
         file_path, _ = file_dialog.getOpenFileName(self, "Select Video File", "", "Video Files (*.mp4 *.avi *.mov)")
