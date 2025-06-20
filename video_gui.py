@@ -10,7 +10,7 @@ from PyQt6.QtGui import QMovie, QIcon, QPixmap
 
 # Import your processing functions
 from detect_mkrs_bkg_grid_blobs_2 import calibrate_markers, process_video
-
+# Constants for file paths
 OUTPUT_VIDEO = "rugby_analysis_output_2.mp4"
 
 class VideoProcessorThread(QThread):
