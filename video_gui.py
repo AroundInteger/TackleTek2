@@ -76,7 +76,10 @@ class VideoApp(QWidget):
         self.speed_box.addItems(["0.1x", "0.25x", "0.5x", "1x", "1.5x", "2x"])
         self.speed_box.setCurrentIndex(3)  # Default to 1x
         self.speed_box.currentIndexChanged.connect(self.change_speed)
-        media_controls_layout.addWidget(QLabel("Speed:"))
+        # --- Update: Use a named label for styling ---
+        self.speed_label = QLabel("Playback Speed:")
+        self.speed_label.setObjectName("playbackSpeedLabel")
+        media_controls_layout.addWidget(self.speed_label)
         media_controls_layout.addWidget(self.speed_box)
 
         layout.addLayout(media_controls_layout)
@@ -139,6 +142,18 @@ class VideoApp(QWidget):
                 width: 18px;
                 margin: -5px 0;
                 border-radius: 9px;
+            }
+            QComboBox, QComboBox QAbstractItemView {
+                color: black;
+                background: #bbdefb;
+                selection-background-color: #90caf9;
+                selection-color: black;
+                font-size: 15px;
+            }
+            QLabel#playbackSpeedLabel {
+                color: #1565c0; /* dark blue */
+                font-weight: bold;
+                font-size: 15px;
             }
         """)
 
