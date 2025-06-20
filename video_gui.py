@@ -1,9 +1,9 @@
 import sys
 import os
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog, QTextEdit, QHBoxLayout
+    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog, QTextEdit, QHBoxLayout, QSlider, QComboBox
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QUrl
+from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtGui import QMovie, QIcon, QPixmap
@@ -58,6 +58,35 @@ class VideoApp(QWidget):
 
         layout.addLayout(button_layout)
 
+        # --- Media controls layout ---
+        media_controls_layout = QHBoxLayout()
+
+        self.play_button = QPushButton("Play")
+        self.play_button.setEnabled(False)
+        self.play_button.clicked.connect(self.play_video)
+        media_controls_layout.addWidget(self.play_button)
+
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.setEnabled(False)
+        self.pause_button.clicked.connect(self.pause_video)
+        media_controls_layout.addWidget(self.pause_button)
+
+        # Playback speed combo box
+        self.speed_box = QComboBox()
+        self.speed_box.addItems(["0.1x", "0.25x", "0.5x", "1x", "1.5x", "2x"])
+        self.speed_box.setCurrentIndex(3)  # Default to 1x
+        self.speed_box.currentIndexChanged.connect(self.change_speed)
+        media_controls_layout.addWidget(QLabel("Speed:"))
+        media_controls_layout.addWidget(self.speed_box)
+
+        layout.addLayout(media_controls_layout)
+
+        # --- Video slider ---
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider.setRange(0, 0)
+        self.position_slider.sliderMoved.connect(self.set_position)
+        layout.addWidget(self.position_slider)
+
         # Video player widgets
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumHeight(300)
@@ -67,6 +96,11 @@ class VideoApp(QWidget):
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
+
+        # Connect signals for slider and state
+        self.media_player.positionChanged.connect(self.position_changed)
+        self.media_player.durationChanged.connect(self.duration_changed)
+        self.media_player.playbackStateChanged.connect(self.update_play_pause_buttons)
 
         self.setLayout(layout)
 
@@ -93,6 +127,18 @@ class VideoApp(QWidget):
                 border: 2px solid #1976d2;
                 border-radius: 8px;
                 background-color: #bbdefb; /* very light blue */
+            }
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: #bbdefb;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #1976d2;
+                border: 1px solid #1565c0;
+                width: 18px;
+                margin: -5px 0;
+                border-radius: 9px;
             }
         """)
 
@@ -135,8 +181,38 @@ class VideoApp(QWidget):
         if os.path.exists(OUTPUT_VIDEO):
             self.media_player.setSource(QUrl.fromLocalFile(os.path.abspath(OUTPUT_VIDEO)))
             self.media_player.play()
+            self.play_button.setEnabled(True)
+            self.pause_button.setEnabled(True)
         else:
             print("Output video not found.")
+
+    # --- Media player controls ---
+    def play_video(self):
+        self.media_player.play()
+
+    def pause_video(self):
+        self.media_player.pause()
+
+    def change_speed(self):
+        speeds = [0.1, 0.25, 0.5, 1.0, 1.5, 2.0]
+        self.media_player.setPlaybackRate(speeds[self.speed_box.currentIndex()])
+
+    def set_position(self, position):
+        self.media_player.setPosition(position)
+
+    def position_changed(self, position):
+        self.position_slider.setValue(position)
+
+    def duration_changed(self, duration):
+        self.position_slider.setRange(0, duration)
+
+    def update_play_pause_buttons(self, state):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_button.setEnabled(False)
+            self.pause_button.setEnabled(True)
+        elif state == QMediaPlayer.PlaybackState.PausedState or state == QMediaPlayer.PlaybackState.StoppedState:
+            self.play_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
