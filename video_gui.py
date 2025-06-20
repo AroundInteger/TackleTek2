@@ -7,7 +7,7 @@ from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtGui import QMovie, QIcon, QPixmap
-# Ensure you have the necessary imports for your video processing functions
+# Ensure you have the necessary imports for your video processing 
 
 # Import your processing functions
 from detect_mkrs_bkg_grid_blobs_2 import calibrate_markers, process_video
