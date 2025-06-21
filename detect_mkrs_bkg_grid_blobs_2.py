@@ -5,6 +5,7 @@ Created on Thu Dec 19 2024
 @author: rowanbrown
 Modified to remove ball detection and add grid to all panels
 Added YOLOv8 pose detection
+Modified to organize output files in structured folders
 """
 
 import cv2
@@ -14,12 +15,59 @@ import os
 import sys
 from collections import defaultdict, deque
 from ultralytics import YOLO
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Initialize YOLO model
 model = YOLO('yolov8x-pose.pt')  # Using the most accurate model
+
+# Global variable to store output directories
+OUTPUT_DIRS = None
+
+# Create output directory structure
+def create_output_directories():
+    """
+    Creates the output directory structure for organized file storage.
+    
+    Returns
+    -------
+    dict
+        Dictionary containing paths to all output directories.
+    """
+    # Create timestamp for unique output folder
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_output_dir = f"rugby_analysis_output_{timestamp}"
+    
+    # Define directory structure
+    directories = {
+        'base': base_output_dir,
+        'masks': os.path.join(base_output_dir, 'masks'),
+        'contours': os.path.join(base_output_dir, 'contours'),
+        'markers': os.path.join(base_output_dir, 'markers'),
+        'calibration': os.path.join(base_output_dir, 'calibration'),
+        'frames': os.path.join(base_output_dir, 'frames'),
+        'videos': os.path.join(base_output_dir, 'videos'),
+        'data': os.path.join(base_output_dir, 'data')
+    }
+    
+    # Create all directories
+    for dir_path in directories.values():
+        os.makedirs(dir_path, exist_ok=True)
+        logging.info(f"Created directory: {dir_path}")
+    
+    return directories
+
+def ensure_output_dirs():
+    """
+    Ensures output directories are created if they don't exist.
+    This is called before any file operations.
+    """
+    global OUTPUT_DIRS
+    if OUTPUT_DIRS is None:
+        OUTPUT_DIRS = create_output_directories()
+    return OUTPUT_DIRS
 
 class PlayerTracker:
     """
@@ -475,6 +523,9 @@ def process_video(video_path, calibration_data):
     -------
     None
     """
+    # Ensure output directories exist
+    output_dirs = ensure_output_dirs()
+    
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("Could not open video file")
@@ -497,8 +548,8 @@ def process_video(video_path, calibration_data):
     prev_ball_carrier = None
     prev_tackler = None
     
-    # Prepare output video
-    output_path = 'rugby_analysis_output_2.mp4'
+    # Prepare output video path
+    output_path = os.path.join(output_dirs['videos'], 'rugby_analysis_output_2.mp4')
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
@@ -555,7 +606,8 @@ def process_video(video_path, calibration_data):
         
         # Save every 10th frame for verification
         if frame_count % 10 == 0:
-            cv2.imwrite(f'frame_{frame_count:03d}_2.jpg', output_frame)
+            frame_path = os.path.join(output_dirs['frames'], f'frame_{frame_count:03d}_2.jpg')
+            cv2.imwrite(frame_path, output_frame)
             logging.info(f"Saved verification frame {frame_count}")
         
         frame_count += 1
@@ -566,11 +618,12 @@ def process_video(video_path, calibration_data):
     # Save distance data to CSV
     if distances:
         import csv
-        with open('distance_data_2.csv', 'w', newline='') as f:
+        csv_path = os.path.join(output_dirs['data'], 'distance_data_2.csv')
+        with open(csv_path, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['Frame', 'Distance (m)'])
             writer.writerows(distances)
-        logging.info(f"Saved distance data to distance_data_2.csv")
+        logging.info(f"Saved distance data to {csv_path}")
 
     logging.info(f"Processed {frame_count} frames")
     logging.info("Analysis video saved successfully to %s", output_path)
@@ -592,6 +645,9 @@ def calibrate_markers(video_path, num_frames=50):
     calibration_data : dict
         Dictionary containing calibration results, grid points, and transform matrices.
     """
+    # Ensure output directories exist
+    output_dirs = ensure_output_dirs()
+    
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("Could not open video file")
@@ -631,7 +687,8 @@ def calibrate_markers(video_path, num_frames=50):
                 cv2.circle(vis_frame, tuple(marker), 10, (0, 165, 255), -1)
             
             # Save frame with detected markers
-            cv2.imwrite(f'marker_detection_{frame_count:03d}.jpg', vis_frame)
+            marker_path = os.path.join(output_dirs['markers'], f'marker_detection_{frame_count:03d}.jpg')
+            cv2.imwrite(marker_path, vis_frame)
         
         frame_count += 1
     
@@ -668,12 +725,14 @@ def calibrate_markers(video_path, num_frames=50):
     
     # Create visualization of final marker positions
     if len(stable_frames) > 0:
-        final_frame = cv2.imread(f'marker_detection_{stable_frames[-1]:03d}.jpg')
+        final_frame_path = os.path.join(output_dirs['markers'], f'marker_detection_{stable_frames[-1]:03d}.jpg')
+        final_frame = cv2.imread(final_frame_path)
         if final_frame is not None:
             for corner in corners:
                 cv2.circle(final_frame, tuple(map(int, corner)), 10, (0, 165, 255), -1)
             
-            cv2.imwrite('final_marker_positions.jpg', final_frame)
+            final_marker_path = os.path.join(output_dirs['markers'], 'final_marker_positions.jpg')
+            cv2.imwrite(final_marker_path, final_frame)
     
     # Create grid points with proper perspective
     grid_points, h_lines_coarse, v_lines_coarse, h_lines_fine, v_lines_fine, transform_matrix, inverse_matrix = create_grid_points(corners)
@@ -688,8 +747,9 @@ def calibrate_markers(video_path, num_frames=50):
                                     grid_size=0.5)
         
         # Save the visualization
-        cv2.imwrite('calibration_visualization.jpg', grid_frame)
-        logging.info("Saved calibration visualization to calibration_visualization.jpg")
+        calibration_path = os.path.join(output_dirs['calibration'], 'calibration_visualization.jpg')
+        cv2.imwrite(calibration_path, grid_frame)
+        logging.info(f"Saved calibration visualization to {calibration_path}")
     
     logging.info("Marker calibration completed successfully")
     
@@ -725,6 +785,9 @@ def detect_orange_markers(frame):
     marker_centers : np.ndarray or None
         Array of four marker centers in image coordinates, or None if not found.
     """
+    # Ensure output directories exist
+    output_dirs = ensure_output_dirs()
+    
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     
     # Create debug visualization
@@ -743,14 +806,16 @@ def detect_orange_markers(frame):
         combined_mask = cv2.bitwise_or(combined_mask, mask)
         
         # Save individual HSV range masks for debugging
-        cv2.imwrite(f'hsv_mask_{i}.jpg', mask)
+        mask_path = os.path.join(output_dirs['masks'], f'hsv_mask_{i}.jpg')
+        cv2.imwrite(mask_path, mask)
     
     kernel = np.ones((5,5), np.uint8)
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel)
     combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel)
     
     # Save the combined mask
-    cv2.imwrite('combined_mask.jpg', combined_mask)
+    combined_mask_path = os.path.join(output_dirs['masks'], 'combined_mask.jpg')
+    cv2.imwrite(combined_mask_path, combined_mask)
     
     contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
@@ -761,7 +826,8 @@ def detect_orange_markers(frame):
     # Draw all detected contours for debugging
     contour_frame = frame.copy()
     cv2.drawContours(contour_frame, contours, -1, (0, 255, 0), 2)
-    cv2.imwrite('all_contours.jpg', contour_frame)
+    contour_path = os.path.join(output_dirs['contours'], 'all_contours.jpg')
+    cv2.imwrite(contour_path, contour_frame)
     
     for contour in contours:
         area = cv2.contourArea(contour)
@@ -775,7 +841,8 @@ def detect_orange_markers(frame):
                 cv2.circle(debug_frame, (int(x), int(y)), 10, (0, 165, 255), -1)
     
     # Save debug frame with all detected markers
-    cv2.imwrite('detected_markers.jpg', debug_frame)
+    detected_markers_path = os.path.join(output_dirs['markers'], 'detected_markers.jpg')
+    cv2.imwrite(detected_markers_path, debug_frame)
     
     if len(marker_centers) == 4:
         # Sort by x-coordinate first (left to right)
@@ -1126,12 +1193,20 @@ def identify_players(keypoints, prev_ball_carrier, prev_tackler):
         return None, None
 
 def main():
+    global OUTPUT_DIRS
+    
+    # Create output directory structure
+    OUTPUT_DIRS = create_output_directories()
+    
     video_path = "R1_1.mp4"
     try:
         # Calibrate markers and initialize pose detection
         calibration_data = calibrate_markers(video_path)
         # Process the video with calibrated parameters
         process_video(video_path, calibration_data)
+        
+        logging.info(f"All output files saved to: {OUTPUT_DIRS['base']}")
+        
     except Exception as e:
         logging.error("Error processing video: %s", str(e))
         raise

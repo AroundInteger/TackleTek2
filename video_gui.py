@@ -17,7 +17,7 @@ OUTPUT_VIDEO = "rugby_analysis_output_2.mp4"
 
 class VideoProcessorThread(QThread):
     log_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal()
+    finished_signal = pyqtSignal(str)  # Pass the output directory path
 
     def __init__(self, video_path):
         super().__init__()
@@ -29,10 +29,16 @@ class VideoProcessorThread(QThread):
             calibration_data = calibrate_markers(self.video_path)
             self.log_signal.emit("Processing video...")
             process_video(self.video_path, calibration_data)
+            
+            # Get the output directory path
+            from detect_mkrs_bkg_grid_blobs_2 import OUTPUT_DIRS
+            output_dir = OUTPUT_DIRS['base'] if OUTPUT_DIRS else "Unknown"
+            
             self.log_signal.emit("Processing complete!")
+            self.finished_signal.emit(output_dir)
         except Exception as e:
             self.log_signal.emit(f"Error: {str(e)}")
-        self.finished_signal.emit()
+            self.finished_signal.emit("")
 
 class VideoApp(QWidget):
     def __init__(self):
@@ -40,6 +46,7 @@ class VideoApp(QWidget):
         self.setWindowTitle("Rugby Video Processor")
         self.resize(700, 600)
         self.video_path = None
+        self.output_directory = None  # Store the output directory path
 
         layout = QVBoxLayout()
 
@@ -194,27 +201,46 @@ class VideoApp(QWidget):
     def handle_log(self, message):
         print(message)
 
-    def on_processing_finished(self):
+    def on_processing_finished(self, output_dir):
         self.process_button.setText("Done")
         self.process_button.setEnabled(True)
-        if os.path.exists(OUTPUT_VIDEO):
-            self.view_button.setEnabled(True)
-            self.save_button.setEnabled(True)
+        self.output_directory = output_dir
+        
+        # Check for output video in the new directory structure
+        if output_dir and os.path.exists(output_dir):
+            video_path = os.path.join(output_dir, 'videos', 'rugby_analysis_output_2.mp4')
+            if os.path.exists(video_path):
+                self.view_button.setEnabled(True)
+                self.save_button.setEnabled(True)
+                # Update the global OUTPUT_VIDEO path for the GUI
+                global OUTPUT_VIDEO
+                OUTPUT_VIDEO = video_path
+            else:
+                print("Output video not found in expected location.")
         else:
-            print("Output video not found.")
+            print("Output directory not found.")
 
     def view_output_video(self):
-        if os.path.exists(OUTPUT_VIDEO):
-            self.media_player.setSource(QUrl.fromLocalFile(os.path.abspath(OUTPUT_VIDEO)))
-            self.media_player.play()
-            self.play_button.setEnabled(True)
-            self.pause_button.setEnabled(True)
+        if self.output_directory:
+            video_path = os.path.join(self.output_directory, 'videos', 'rugby_analysis_output_2.mp4')
+            if os.path.exists(video_path):
+                self.media_player.setSource(QUrl.fromLocalFile(os.path.abspath(video_path)))
+                self.media_player.play()
+                self.play_button.setEnabled(True)
+                self.pause_button.setEnabled(True)
+            else:
+                print("Output video not found.")
         else:
-            print("Output video not found.")
+            print("No output directory available.")
 
     def save_video(self):
-        if not os.path.exists(OUTPUT_VIDEO):
+        if not self.output_directory:
             return
+            
+        source_video = os.path.join(self.output_directory, 'videos', 'rugby_analysis_output_2.mp4')
+        if not os.path.exists(source_video):
+            return
+            
         # Suggest a filename based on the original video
         if self.video_path:
             base, ext = os.path.splitext(os.path.basename(self.video_path))
@@ -224,7 +250,7 @@ class VideoApp(QWidget):
         save_path, _ = QFileDialog.getSaveFileName(self, "Save Processed Video", suggested, "Video Files (*.mp4 *.avi *.mov)")
         if save_path:
             try:
-                shutil.copyfile(OUTPUT_VIDEO, save_path)
+                shutil.copyfile(source_video, save_path)
             except Exception as e:
                 print(f"Error saving video: {e}")
 
