@@ -7,6 +7,7 @@ from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtGui import QMovie, QIcon, QPixmap
+import shutil  # <-- for saving the video
 # Ensure you have the necessary imports for your video processing 
 
 # Import your processing functions
@@ -24,7 +25,7 @@ class VideoProcessorThread(QThread):
 
     def run(self):
         try:
-            self.log_signal.emit("Calibrating markers...")
+            self.log_signal.emit("Calibrating markers...")      
             calibration_data = calibrate_markers(self.video_path)
             self.log_signal.emit("Processing video...")
             process_video(self.video_path, calibration_data)
@@ -42,6 +43,7 @@ class VideoApp(QWidget):
 
         layout = QVBoxLayout()
 
+        # --- Top buttons ---
         button_layout = QHBoxLayout()
         self.select_button = QPushButton("Select Video")
         self.select_button.clicked.connect(self.select_video)
@@ -57,51 +59,55 @@ class VideoApp(QWidget):
         self.view_button.setEnabled(False)
         button_layout.addWidget(self.view_button)
 
+        self.save_button = QPushButton("Save Video")
+        self.save_button.clicked.connect(self.save_video)
+        self.save_button.setEnabled(False)
+        button_layout.addWidget(self.save_button)
+
         layout.addLayout(button_layout)
 
-        # --- Media controls layout ---
-        media_controls_layout = QHBoxLayout()
-
-        self.play_button = QPushButton("Play")
-        self.play_button.setEnabled(False)
-        self.play_button.clicked.connect(self.play_video)
-        media_controls_layout.addWidget(self.play_button)
-
-        self.pause_button = QPushButton("Pause")
-        self.pause_button.setEnabled(False)
-        self.pause_button.clicked.connect(self.pause_video)
-        media_controls_layout.addWidget(self.pause_button)
-
-        # Playback speed combo box
-        self.speed_box = QComboBox()
-        self.speed_box.addItems(["0.1x", "0.25x", "0.5x", "1x", "1.5x", "2x"])
-        self.speed_box.setCurrentIndex(3)  # Default to 1x
-        self.speed_box.currentIndexChanged.connect(self.change_speed)
-        # --- Update: Use a named label for styling ---
-        self.speed_label = QLabel("Playback Speed:")
-        self.speed_label.setObjectName("playbackSpeedLabel")
-        media_controls_layout.addWidget(self.speed_label)
-        media_controls_layout.addWidget(self.speed_box)
-
-        layout.addLayout(media_controls_layout)
-
-        # --- Video slider ---
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
-        self.position_slider.setRange(0, 0)
-        self.position_slider.sliderMoved.connect(self.set_position)
-        layout.addWidget(self.position_slider)
-
-        # Video player widgets
+        # --- Video player widget ---
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumHeight(300)
         layout.addWidget(self.video_widget)
 
+        # --- Controls under video ---
+        controls_layout = QHBoxLayout()
+        self.play_button = QPushButton("Play")
+        self.play_button.setEnabled(False)
+        self.play_button.clicked.connect(self.play_video)
+        controls_layout.addWidget(self.play_button)
+
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.setEnabled(False)
+        self.pause_button.clicked.connect(self.pause_video)
+        controls_layout.addWidget(self.pause_button)
+
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider.setRange(0, 0)
+        self.position_slider.sliderMoved.connect(self.set_position)
+        controls_layout.addWidget(self.position_slider)
+
+        layout.addLayout(controls_layout)
+
+        # --- Playback speed under video ---
+        speed_layout = QHBoxLayout()
+        self.speed_label = QLabel("Playback Speed:")
+        self.speed_label.setObjectName("playbackSpeedLabel")
+        speed_layout.addWidget(self.speed_label)
+        self.speed_box = QComboBox()
+        self.speed_box.addItems(["0.1x", "0.25x", "0.5x", "1x", "1.5x", "2x"])
+        self.speed_box.setCurrentIndex(3)  # Default to 1x
+        self.speed_box.currentIndexChanged.connect(self.change_speed)
+        speed_layout.addWidget(self.speed_box)
+        speed_layout.addStretch()
+        layout.addLayout(speed_layout)
+
+        # --- Media player setup ---
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
-
-        # Connect signals for slider and state
         self.media_player.positionChanged.connect(self.position_changed)
         self.media_player.durationChanged.connect(self.duration_changed)
         self.media_player.playbackStateChanged.connect(self.update_play_pause_buttons)
@@ -163,13 +169,15 @@ class VideoApp(QWidget):
         file_path, _ = file_dialog.getOpenFileName(self, "Select Video File", "", "Video Files (*.mp4 *.avi *.mov)")
         if file_path:
             self.video_path = file_path
-            self.process_button.setText("Process Video")  # Reset text
+            self.process_button.setText("Process Video")
             self.process_button.setEnabled(True)
             self.view_button.setEnabled(False)
+            self.save_button.setEnabled(False)
         else:
-            self.process_button.setText("Process Video")  # Reset text
+            self.process_button.setText("Process Video")
             self.process_button.setEnabled(False)
             self.view_button.setEnabled(False)
+            self.save_button.setEnabled(False)
 
     def process_video(self):
         if not self.video_path:
@@ -177,6 +185,7 @@ class VideoApp(QWidget):
         self.process_button.setText("Processing Video...")
         self.process_button.setEnabled(False)
         self.view_button.setEnabled(False)
+        self.save_button.setEnabled(False)
         self.thread = VideoProcessorThread(self.video_path)
         self.thread.log_signal.connect(self.handle_log)
         self.thread.finished_signal.connect(self.on_processing_finished)
@@ -190,6 +199,7 @@ class VideoApp(QWidget):
         self.process_button.setEnabled(True)
         if os.path.exists(OUTPUT_VIDEO):
             self.view_button.setEnabled(True)
+            self.save_button.setEnabled(True)
         else:
             print("Output video not found.")
 
@@ -201,6 +211,22 @@ class VideoApp(QWidget):
             self.pause_button.setEnabled(True)
         else:
             print("Output video not found.")
+
+    def save_video(self):
+        if not os.path.exists(OUTPUT_VIDEO):
+            return
+        # Suggest a filename based on the original video
+        if self.video_path:
+            base, ext = os.path.splitext(os.path.basename(self.video_path))
+            suggested = f"{base}_processed{ext}"
+        else:
+            suggested = "processed_video.mp4"
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save Processed Video", suggested, "Video Files (*.mp4 *.avi *.mov)")
+        if save_path:
+            try:
+                shutil.copyfile(OUTPUT_VIDEO, save_path)
+            except Exception as e:
+                print(f"Error saving video: {e}")
 
     # --- Media player controls ---
     def play_video(self):
